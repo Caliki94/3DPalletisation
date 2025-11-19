@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>3D Pallet Calculator – V2</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+    #ui {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.97);
+      padding: 12px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      max-width: 280px;
+      z-index: 10;
+      font-size: 13px;
+    }
+    #ui h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+    #ui label {
+      display: block;
+      margin-top: 6px;
+      font-weight: 500;
+    }
+    #ui input {
+      width: 100%;
+      padding: 4px 6px;
+      margin-top: 2px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 13px;
+    }
+    #ui button {
+      margin-top: 10px;
+      width: 100%;
+      padding: 7px 0;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #ui button#calc {
+      background: #111827;
+      color: #fff;
+    }
+    #ui .small {
+      font-size: 12px;
+      color: #555;
+      margin-top: 4px;
+    }
+    #results {
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    #container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h2>Pallet 3D Demo</h2>
+    <div><strong>Box (unit) dimensions – mm</strong></div>
+    <label>Width (X)
+      <input id="boxW" type="number" value="300" />
+    </label>
+    <label>Length (Y)
+      <input id="boxL" type="number" value="200" />
+    </label>
+    <label>Height (Z)
+      <input id="boxH" type="number" value="150" />
+    </label>
+
+    <div style="margin-top:8px;"><strong>Pallet dimensions – mm</strong></div>
+    <label>Width (X)
+      <input id="palW" type="number" value="1200" />
+    </label>
+    <label>Length (Y)
+      <input id="palL" type="number" value="800" />
+    </label>
+    <label>Height (Z)
+      <input id="palH" type="number" value="144" />
+    </label>
+
+    <label style="margin-top:8px;">Number of layers
+      <input id="layers" type="number" value="5" />
+    </label>
+
+    <button id="calc">Recalculate &amp; Render</button>
+    <div id="results"></div>
+    <div class="small">Tip: drag with mouse to rotate, scroll to zoom.</div>
+  </div>
+
+  <div id="container"></div>
+
+  <!-- Module version: more reliable loading of Three.js + OrbitControls -->
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.150.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.150.0/examples/jsm/controls/OrbitControls.js';
+
+    const SCALE = 1 / 100; // 10 mm = 1 unit
+
+    let scene, camera, renderer, controls, palletGroup;
+
+    function init() {
+      const container = document.getElementById('container');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf4f4f4);
+
+      const aspect = window.innerWidth / window.innerHeight;
+      camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+      camera.position.set(15, 15, 15);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 3, 0);
+      controls.update();
+
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7);
+      hemiLight.position.set(0, 20, 0);
+      scene.add(hemiLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+      dirLight.position.set(10, 20, 10);
+      scene.add(dirLight);
+
+      const groundGeo = new THREE.PlaneGeometry(50, 50);
+      const groundMat = new THREE.MeshPhongMaterial({ color: 0xdddddd });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = 0;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      window.addEventListener('resize', onWindowResize);
+
+      animate();
+    }
+
+    function onWindowResize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    function buildPalletScene(boxW, boxL, boxH, palW, palL, palH, layers) {
+      if (palletGroup) {
+        scene.remove(palletGroup);
+      }
+      palletGroup = new THREE.Group();
+
+      const bW = boxW * SCALE;
+      const bL = boxL * SCALE;
+      const bH = boxH * SCALE;
+
+      const pW = palW * SCALE;
+      const pL = palL * SCALE;
+      const pH = palH * SCALE;
+
+      const palletGeo = new THREE.BoxGeometry(pW, pH, pL);
+      const palletMat = new THREE.MeshPhongMaterial({ color: 0x8b5a2b });
+      const pallet = new THREE.Mesh(palletGeo, palletMat);
+      pallet.position.y = pH / 2;
+      pallet.castShadow = true;
+      pallet.receiveShadow = true;
+      palletGroup.add(pallet);
+
+      const countX = Math.floor(pW / bW);
+      const countY = Math.floor(pL / bL);
+
+      const resultsDiv = document.getElementById('results');
+      const perLayer = countX * countY;
+
+      if (perLayer <= 0 || layers <= 0) {
+        resultsDiv.innerHTML = "<span style='color:red'>Box too big for pallet or layers invalid.</span>";
+        scene.add(palletGroup);
+        return;
+      }
+
+      const totalBoxes = perLayer * layers;
+      resultsDiv.innerHTML =
+        "<strong>Boxes per layer:</strong> " + perLayer +
+        "<br><strong>Total boxes:</strong> " + totalBoxes +
+        "<br><strong>Grid:</strong> " + countX + " x " + countY;
+
+      const boxMat = new THREE.MeshPhongMaterial({ color: 0x2196f3 });
+
+      const startX = -pW / 2 + bW / 2;
+      const startZ = -pL / 2 + bL / 2;
+      const palletTop = pH;
+
+      for (let layer = 0; layer < layers; layer++) {
+        const y = palletTop + bH/2 + layer * bH;
+
+        for (let i = 0; i < countX; i++) {
+          for (let j = 0; j < countY; j++) {
+            const x = startX + i * bW;
+            const z = startZ + j * bL;
+
+            const boxGeo = new THREE.BoxGeometry(bW, bH, bL);
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            box.position.set(x, y, z);
+            box.castShadow = true;
+            box.receiveShadow = true;
+            palletGroup.add(box);
+          }
+        }
+      }
+
+      palletGroup.position.set(0, 0.01, 0);
+      scene.add(palletGroup);
+
+      const maxSize = Math.max(pW, pL, pH + layers * bH);
+      camera.position.set(maxSize * 1.4, maxSize * 1.4, maxSize * 1.4);
+      controls.target.set(0, (pH + layers * bH) / 2, 0);
+      controls.update();
+    }
+
+    function setupUI() {
+      const calcBtn = document.getElementById('calc');
+      calcBtn.addEventListener('click', () => {
+        const boxW = parseFloat(document.getElementById('boxW').value);
+        const boxL = parseFloat(document.getElementById('boxL').value);
+        const boxH = parseFloat(document.getElementById('boxH').value);
+        const palW = parseFloat(document.getElementById('palW').value);
+        const palL = parseFloat(document.getElementById('palL').value);
+        const palH = parseFloat(document.getElementById('palH').value);
+        const layers = parseInt(document.getElementById('layers').value, 10);
+
+        if ([boxW, boxL, boxH, palW, palL, palH].some(v => isNaN(v) || v <= 0) || isNaN(layers) || layers <= 0) {
+          document.getElementById('results').innerHTML =
+            "<span style='color:red'>Fill all values with positive numbers.</span>";
+          return;
+        }
+
+        buildPalletScene(boxW, boxL, boxH, palW, palL, palH, layers);
+      });
+    }
+
+    // Run
+    init();
+    setupUI();
+    // First render
+    buildPalletScene(300, 200, 150, 1200, 800, 144, 5);
+  </script>
+</body>
+</html>
